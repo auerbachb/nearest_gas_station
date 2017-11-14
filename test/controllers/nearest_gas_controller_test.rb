@@ -15,7 +15,7 @@ class NearestGasControllerTest < ActionDispatch::IntegrationTest
   test '469 7th Ave, New York, NY 10018, gps: [40.75194, -73.9894451]' do
     # In this case, the google map api returns '1 Pennsylvania Plaza # 1612, New York' which is a fuel company.
     # But when searching within google map, the nearest gas station should be '466 10th Avenue, New York' that is a BP gas staion.
-    # Suggestion: Check if its name is one of the gas staion brand in usa.
+    # Suggestion: Check if its name is one of the gas station brand in usa.
 
     expected_nearest_gas_station = {
       'streetAddress' => '466 10th Avenue',
@@ -61,7 +61,7 @@ class NearestGasControllerTest < ActionDispatch::IntegrationTest
 
   test 'a gps in the middle of sea' do
     # No address and gas station found.
-    
+
     expected_response = {
       'addresses' => [],
       'nearest_gas_station' => {}
