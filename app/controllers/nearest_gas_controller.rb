@@ -4,7 +4,7 @@ class NearestGasController < ApplicationController
 
   GOOGLE_MAP_KEY = 'AIzaSyAIU_2CxK-fAGA7WLz6AR_6IDBfshuDzvE'
   REVESE_GPS_QUERY_URL = 'https://maps.googleapis.com/maps/api/geocode/json?latlng=%s,%s&key=%s'
-  GAS_STATION_QUERY_URL = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=%s,%s&type=gas_station&keyword=gas station&rankby=distance&key=%s'
+  GAS_STATION_QUERY_URL = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=%s,%s&type=gas_station&rankby=distance&key=%s'
   GEOCODING_QUERY_URL = 'https://maps.googleapis.com/maps/api/geocode/json?address=%s&key=%s'
 
   def index
@@ -17,8 +17,8 @@ class NearestGasController < ApplicationController
     end
     lat = params[:lat]
     lng = params[:lng]
-    address = reverse_gps(lat, lng)
-    if address == nil
+    addresses = reverse_gps(lat, lng)
+    if addresses == nil
       render json: {
         error: 'latitude and longitude not found'
       }, status: :not_found
@@ -28,34 +28,40 @@ class NearestGasController < ApplicationController
     NearestGasStaion.create({
         lat: lat,
         lng: lng,
-        address: address,
+        addresses: addresses,
         nearest_gas_station: nearest_gas_station
     })
     render json: {
-      address: address,
+      addresses: addresses,
       nearest_gas_station: nearest_gas_station
     }
   end
 
   def fetch_nearest_gas_station(lat, lng)
-    formatted_gas_station_query_url = format(GAS_STATION_QUERY_URL, lat, lng, GOOGLE_MAP_KEY)
     begin
+      formatted_gas_station_query_url = URI.encode(format(GAS_STATION_QUERY_URL, lat, lng, GOOGLE_MAP_KEY))
       gas_station_address = JSON.parse(open(formatted_gas_station_query_url).read)['results'][0]['vicinity']
-      formatted_geocoding_query_url = format(GEOCODING_QUERY_URL, gas_station_address, GOOGLE_MAP_KEY)
+      formatted_geocoding_query_url = URI.encode(format(GEOCODING_QUERY_URL, gas_station_address, GOOGLE_MAP_KEY))
       address_components = JSON.parse(open(formatted_geocoding_query_url).read)['results'][0]['address_components']
       return parse_address_components(address_components)
-    rescue Exception => e
+    rescue
       return {}
     end
   end
 
-
   def reverse_gps(lat, lng)
-    formatted_reverse_gps_query_url = format(REVESE_GPS_QUERY_URL, lat, lng, GOOGLE_MAP_KEY)
     begin
-      address_components = JSON.parse(open(formatted_reverse_gps_query_url).read)['results'][0]['address_components']
-      return parse_address_components(address_components)
-    rescue Exception => e
+      formatted_reverse_gps_query_url = URI.encode(format(REVESE_GPS_QUERY_URL, lat, lng, GOOGLE_MAP_KEY))
+      addresses = []
+      JSON.parse(open(formatted_reverse_gps_query_url).read)['results'].each { |result|
+        address = parse_address_components(result['address_components'])
+        next if address['streetAddress'].nil?
+        addresses.push({
+          'address' => address
+        })
+      }
+      return addresses
+    rescue
       return nil
     end
   end
@@ -65,16 +71,22 @@ class NearestGasController < ApplicationController
       address_components.each{ |address_component|
         types = address_component['types']
         if types.include? 'street_number'
+          # street_number indicates the precise street number
           parsed_address_components['street_number'] = address_component['long_name']
         elsif types.include? 'route'
+          # route indicates named route (such as "US 101")
           parsed_address_components['route'] = address_component['long_name']
         elsif types.include? 'locality'
+          # locality indicates an incorporated city or town political entity
           parsed_address_components['city'] = address_component['long_name']
         elsif types.include? 'administrative_area_level_1'
+          # administrative_area_level_1 indicates a first-order civil entity below the country level
           parsed_address_components['state'] = address_component['short_name']
         elsif types.include? 'postal_code'
+          # postal_code indicates a postal code as used to address postal mail within the country
           parsed_address_components['postal_code'] = address_component['long_name']
         elsif types.include? 'postal_code_suffix'
+          # postal_code_suffix indicates a postal code suffix as used to address postal mail within the country
           parsed_address_components['postal_code_suffix'] = address_component['long_name']
         end
       }
@@ -91,10 +103,10 @@ class NearestGasController < ApplicationController
         street_address = parsed_address_components['street_number']
       end
       address = {
-        'streetAddress': street_address,
-        'city': parsed_address_components['city'],
-        'state': parsed_address_components['state'],
-        'postalCode': postal_code
+        'streetAddress' => street_address,
+        'city' => parsed_address_components['city'],
+        'state' => parsed_address_components['state'],
+        'postalCode' => postal_code
       }
       return address
   end
